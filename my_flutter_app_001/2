@@ -1,0 +1,262 @@
+
+// 카테고리를 CSV 파일에서 로드하는 함수
+  Future<void> loadCategories() async {
+      String filePath = await getLocalFilePath('category.csv');
+      try{
+      final file = File(filePath);
+      debugPrint('파일위치 : $filePath');
+
+      if (await file.exists()) {
+        final csvData = await file.readAsString();
+        List<List<dynamic>> csvTable = const CsvToListConverter().convert(csvData);
+        setState(() {
+          selectedCategories = csvTable.map((row) => row[0].toString()).toList();
+        });
+      } else {
+        // 파일이 없으면 기본 카테고리를 세팅
+        debugPrint('파일이 없습니다');
+        setState(() {
+          file.create();
+          selectedCategories = ["식비", "교통비", "통신비", "여과생활비용", "기타"];
+          file.writeAsString(selectedCategories as String,mode:FileMode.append);
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading categories: $e");
+    }
+  }
+    // 카테고리를 CSV 파일에 저장하는 함수
+  Future<void> saveCategoriesToCSV(List<String> categories) async { 
+  try {
+    final directory = await getApplicationDocumentsDirectory();
+    final path = '${directory.path}/categories.csv';
+    final file = File(path);
+    // 카테고리를 CSV 형식으로 변환
+    String csvContent = categories.join(','); // 카테고리를 쉼표로 구분하여 저장
+    await file.writeAsString(csvContent);
+    debugPrint('카테고리가 $path에 저장되었습니다.');
+  } catch (e) {
+    debugPrint('CSV 저장 오류: $e');
+  }
+}
+
+
+  //카테고리 수정 코드 
+void openCategoryEditDialog() {
+  showDialog<dynamic>(
+    context: context,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        title: const Text('카테고리 수정'),
+        MainAxisSize: MainAxisSize.min,
+          child: Column(
+            children: <Widget>[
+              ListTitle<String>(
+                  itemCount: selectedCategories.length, // 전체 카테고리 수
+                  itemBuilder: (context, index) {
+                
+                      title: Text(selectedCategories[index]), // 전체 카테고리에서 체크박스 생성
+                      value: selectedCategories.contains(selectedCategories[index]), // 체크박스 상태
+                      
+                        setState(() {
+                           
+                          }
+                        );
+                      
+                  },
+                
+              ),
+    
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: openAddCategoryDialog,
+                child: const Text('카테고리 추가'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: openDeleteCategoryDialog,
+            child: const Text('선택한 카테고리 삭제'),
+          ),
+          TextButton(
+            child: const Text('닫기'),
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+          ),
+        ],
+      );
+    },
+  );
+}
+
+
+
+
+
+
+
+//카테고리 추가 다이얼로그 열기 
+void openAddCategoryDialog() {
+    showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        title: const Text('카테고리 추가'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 카테고리 수정 UI 추가
+            TextField(
+              controller: _categoryController, // 카테고리 수정용 텍스트 필드
+              decoration: const InputDecoration(hintText: '새로운 카테고리 입력'),
+            ),
+            // 추가 UI 요소 ...
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              // 카테고리 수정 로직
+              try {
+                // 카테고리 수정 코드 추가
+                String newCategory = _categoryController.text.trim();
+                if (newCategory.isNotEmpty) {
+                  // 수정 로직 (예: selectedCategories에 새로운 카테고리 추가 등)
+                  setState(() {
+                    selectedCategories.add(newCategory); // 예시로 새로운 카테고리 추가
+                  });
+                  Navigator.of(context).pop(); // 다이얼로그 닫기
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('카테고리를 입력하세요.')),
+                  );
+                }
+              } catch (e) {
+                debugPrint('오류 발생: $e'); // 오류 발생 시 로그 출력
+              }
+            },
+            child: const Text('추가'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop(); // 다이얼로그 닫기
+            },
+            child: const Text('닫기'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+// 카테고리 추가 함수
+void addCategory(String newCategory) async {
+  setState(() {
+    selectedCategories.add(newCategory); // 로컬 리스트에 추가
+  });
+
+  // CSV 파일에 추가
+  String filePath = await getLocalFilePath('category.csv');
+  final file = File(filePath);
+
+  List<List<dynamic>> csvData = selectedCategories.map((category) => [category]).toList();
+  String csvString = const ListToCsvConverter().convert(csvData);
+  await file.writeAsString(csvString);
+  debugPrint('새로운 카테고리 추가 완료: $newCategory');
+}
+
+// 카테고리 삭제 다이얼로그 열기
+void openDeleteCategoryDialog() {
+    if (selectedCategories.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('삭제할 카테고리를 선택하세요.')),
+      );
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('카테고리 삭제'),
+          content: Text('${selectedCategories.join(', ')} 카테고리를 삭제하시겠습니까?'),
+          actions: [
+            TextButton(
+              child: const Text('취소'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: const Text('확인'),
+              onPressed: () {
+                setState(() {
+                  selectedCategories.removeWhere((category) => selectedCategory.contains(category));
+                  selectedCategory="";
+                  saveCategoriesToCSV(selectedCategories); // 변경사항을 CSV에 저장
+                  selectedCategories.clear(); // 선택된 항목 초기화
+                });
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+
+
+
+
+
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Todaytitle(),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        child: Column(
+          children: [
+            buildRecordList(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: openRecordEditDialog,
+                    child: const Text('오늘 소비 기록 추가'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: openCategoryEditDialog, // 카테고리 수정
+                    child: const Text('카테고리 수정'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class Todaytitle extends StatelessWidget {
+  const Todaytitle({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var today = DateTime.now();
+    var formattedDate = DateFormat('yy-MM-dd').format(today);
+    return Text('$formattedDate 의 소비 기록');
+  }
+}

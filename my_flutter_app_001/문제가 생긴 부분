@@ -1,0 +1,412 @@
+1. 카테고리 로드 하는 부분 에서 생기는 오류 
+2. CSV 데이터 로드 및 저장 이 안되는 상태 
+3. 카테고리관련 CSV 파일 오류 
+4. 오늘 기록 입력 부분에서 데이터 에러가 생김 
+
+
+
+카테고리 추가 부분 CSV 파일 저장 오류 
+오늘 기록 입력 부분 Dataerror 
+
+
+Error loading categories: MissingPluginException(No implementation found for method getApplicationDocumentsDirectory on channel
+plugins.flutter.io/path_provider)
+
+
+DartError: MissingPluginException(No implementation found for method getApplicationDocumentsDirectory on channel plugins.flutter.io/path_provider)
+
+
+
+일단 코드에서 문제가 있어 보이는 걸 챗지피티가 찾은 코드 
+##############################################################################################################################
+##############################################################################################################################
+##############################################################################################################################
+##############################################################################################################################
+##############################################################################################################################
+##############################################################################################################################
+Future<void> loadandcreatecategories() async {
+  String filePath = await getLocalFilePath('categories.csv');
+  final file = File(filePath);
+
+  if (!await file.exists()) {
+    List<List<dynamic>> csvData = defaultCategoriyList.map((category) => [category]).toList();
+    String csvString = const ListToCsvConverter().convert(csvData);
+    await file.writeAsString(csvString, mode: FileMode.write, flush: true);
+    debugPrint('기본 카테고리 생성 완료');
+  } 
+  await loadCategories(); // 생성 후 카테고리 로드
+}
+
+// 카테고리를 CSV 파일에서 로드하는 함수
+Future<void> loadCategories() async {
+  try {
+    String filePath = await getLocalFilePath('categories.csv');
+    final file = File(filePath);
+
+    if (!await file.exists()) {
+      categoryList = List.from(defaultCategoriyList);
+    } else {
+      String csvData = await file.readAsString();
+      final csvTable = const CsvToListConverter().convert(csvData);
+      setState(() {
+        categoryList = csvTable.map((row) => row[0].toString()).toSet().toList();
+      });
+    }
+  } catch (e) {
+    debugPrint("Error loading categories: $e");
+  }
+}
+
+// 카테고리를 CSV 파일에 저장하는 함수 (중복 방지 추가)
+Future<void> saveCategoriesToCSV() async {
+  try {
+    final path = await getLocalFilePath('categories.csv');
+    final file = File(path);
+    List<String> uniqueCategories = categoryList.toSet().toList(); // 중복 제거
+    List<List<dynamic>> csvData = uniqueCategories.map((category) => [category]).toList();
+    String csvString = const ListToCsvConverter().convert(csvData);
+    await file.writeAsString(csvString, mode: FileMode.write, flush: true);
+    debugPrint('카테고리가 CSV에 저장되었습니다.');
+  } catch (e) {
+    debugPrint('CSV 저장 오류: $e');
+  }
+}
+
+// 소비 기록을 CSV 파일에 추가
+void addRecord() {
+  final now = TimeOfDay.now();
+  final time = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+  final amount = int.tryParse(_amountController.text) ?? 0;
+  final description = _descriptionController.text;
+
+  if (selectedCategory.isEmpty || amount == 0 || description.isEmpty) {
+    debugPrint('입력값이 비어있어서 추가가 안됩니다');
+    return;
+  }
+
+  final newRecord = {
+    "time": time,
+    "category": selectedCategory,
+    "amount": amount,
+    "description": description,
+  };
+
+  setState(() {
+    records.add(newRecord);
+  });
+
+  addRecordToCSV(newRecord); // CSV 파일에 기록 추가
+  clearFields(); // 필드 초기화
+  Navigator.of(context).pop();
+}
+
+// CSV 파일에 새 레코드 추가 함수
+Future<void> addRecordToCSV(Map<String, dynamic> newRecord) async {
+  String filePath = await getLocalFilePath('records.csv');
+  final file = File(filePath);
+
+  if (!await file.exists()) await file.create();
+
+  List<List<dynamic>> csvData = [
+    [
+      DateFormat('yyyy-MM-dd').format(DateTime.now()),
+      newRecord["time"],
+      newRecord["category"],
+      newRecord["amount"],
+      newRecord["description"],
+    ]
+  ];
+
+  String csvString = const ListToCsvConverter().convert(csvData);
+  await file.writeAsString(csvString, mode: FileMode.append, flush: true);
+}
+
+
+
+##############################################################################################################################
+##############################################################################################################################
+##############################################################################################################################
+##############################################################################################################################
+##############################################################################################################################
+##############################################################################################################################
+
+
+1. 데이터 이어서 저장되는 문제 해결
+데이터를 저장할 때 각 항목 사이에 줄바꿈 문자가 포함되도록 파일에 쓰는 코드를 수정해야 합니다.
+
+예를 들어, 현재 데이터를 파일에 저장하는 부분이 아래와 같다고 가정해 보겠습니다.
+
+dart
+코드 복사
+String data = "$date,$time,$category,$amount,$note";
+file.writeAsString(data, mode: FileMode.append);
+여기서 data를 저장할 때 새 줄을 추가해야 합니다. 다음과 같이 코드를 수정해 보세요.
+
+dart
+코드 복사
+String data = "$date,$time,$category,$amount,$note\n";
+file.writeAsString(data, mode: FileMode.append);
+이처럼 데이터 끝에 \n을 추가해 주면 각 레코드가 새 줄에 저장되므로, 파일을 다시 읽을 때 쉽게 구분할 수 있습니다.
+
+2. 카테고리 삭제 문제 해결
+카테고리를 삭제했을 때 변경 사항이 화면에 반영되지 않는 문제는 상태 관리나 삭제 후 목록 갱신이 누락되어 발생할 수 있습니다. 아래 두 가지를 확인해 보세요.
+
+리스트 상태 업데이트: 삭제가 수행된 후 setState()를 호출하여 UI가 갱신되도록 합니다. 예를 들어, 카테고리를 삭제하는 함수가 다음과 같다면:
+
+dart
+코드 복사
+void deleteCategory(String category) {
+    categories.remove(category); // 카테고리 삭제
+    setState(() {}); // 상태 갱신을 위해 setState 호출
+}
+데이터 저장소에서 삭제 확인: 파일이나 데이터베이스에 카테고리가 제대로 삭제되는지 확인합니다. 예를 들어, 삭제된 카테고리를 반영하기 위해 파일에 쓰는 부분도 다시 저장합니다.
+
+dart
+코드 복사
+void deleteCategory(String category) async {
+    categories.remove(category); // 메모리에서 삭제
+    setState(() {});
+
+    // 파일에 업데이트된 카테고리 리스트를 다시 저장
+    final file = await getLocalFile();
+    file.writeAsString(categories.join('\n')); // 각 카테고리를 줄바꿈으로 구분하여 저장
+}
+위 방법을 적용하면 각 문제를 해결할 가능성이 큽니다.
+
+
+
+
+
+
+
+
+
+
+
+dependencies:
+  csv: ^5.0.0
+  fl_chart: ^0.40.0
+
+  import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:csv/csv.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
+
+class MonthPage extends StatefulWidget {
+  const MonthPage({super.key});
+
+  @override
+  State<MonthPage> createState() => _MonthPageState();
+}
+
+class _MonthPageState extends State<MonthPage> {
+  List<Map<String, dynamic>> _filteredData = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  // CSV 파일 읽기 및 필터링
+  Future<void> _loadData() async {
+    final csvData = await _readCsvFile('assets/your_data.csv'); // 파일 경로를 설정해 주세요.
+    final filteredData = _filterCurrentMonthData(csvData);
+    setState(() {
+      _filteredData = filteredData;
+    });
+  }
+
+  // CSV 파일을 읽는 함수
+  Future<List<List<dynamic>>> _readCsvFile(String filePath) async {
+    final csvData = await DefaultAssetBundle.of(context).loadString(filePath);
+    List<List<dynamic>> csvTable = CsvToListConverter().convert(csvData);
+    return csvTable;
+  }
+
+  // 이번 달 데이터 필터링
+  List<Map<String, dynamic>> _filterCurrentMonthData(List<List<dynamic>> csvData) {
+    DateTime now = DateTime.now();
+    DateTime firstDayOfMonth = DateTime(now.year, now.month, 1);
+    DateTime lastDayOfMonth = DateTime(now.year, now.month + 1, 1).subtract(Duration(days: 1));
+    DateFormat dateFormat = DateFormat('yyyy-MM-dd');
+
+    List<Map<String, dynamic>> filteredData = [];
+
+    for (var row in csvData.skip(1)) { // 첫 번째 행은 헤더라 가정하고 건너뜀
+      DateTime date;
+      try {
+        date = dateFormat.parse(row[0]);
+      } catch (e) {
+        continue; // 날짜 형식이 잘못된 경우 건너뜀
+      }
+
+      if (date.isAfter(firstDayOfMonth.subtract(Duration(days: 1))) && date.isBefore(lastDayOfMonth.add(Duration(days: 1)))) {
+        filteredData.add({
+          "date": date,
+          "time": row[1],
+          "category": row[2],
+          "amount": double.parse(row[3].toString()),
+          "description": row[4],
+        });
+      }
+    }
+    return filteredData;
+  }
+
+  // 카테고리별 금액 합계 계산
+  Map<String, double> _calculateCategoryAmounts() {
+    Map<String, double> categoryAmounts = {};
+
+    for (var entry in _filteredData) {
+      String category = entry["category"];
+      double amount = entry["amount"];
+      if (categoryAmounts.containsKey(category)) {
+        categoryAmounts[category] = categoryAmounts[category]! + amount;
+      } else {
+        categoryAmounts[category] = amount;
+      }
+    }
+
+    return categoryAmounts;
+  }
+
+  // 원형 그래프 데이터 생성
+  List<PieChartSectionData> _generatePieChartSections(Map<String, double> categoryAmounts) {
+    return categoryAmounts.entries.map((entry) {
+      return PieChartSectionData(
+        title: entry.key,
+        value: entry.value,
+        color: Colors.primaries[categoryAmounts.keys.toList().indexOf(entry.key) % Colors.primaries.length],
+        radius: 50,
+      );
+    }).toList();
+  }
+
+  // 막대 그래프 데이터 생성
+  List<BarChartGroupData> _generateBarChartData(Map<String, double> categoryAmounts) {
+    return categoryAmounts.entries.map((entry) {
+      int index = categoryAmounts.keys.toList().indexOf(entry.key);
+      return BarChartGroupData(
+        x: index,
+        barRods: [
+          BarChartRodData(
+            toY: entry.value,
+            color: Colors.blue,
+            width: 15,
+          ),
+        ],
+        showingTooltipIndicators: [0],
+      );
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final categoryAmounts = _calculateCategoryAmounts();
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Month Data')),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            const SizedBox(height: 20),
+            const Text(
+              '이번 달 카테고리별 금액 원형 그래프',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            // 원형 그래프
+            AspectRatio(
+              aspectRatio: 1.3,
+              child: PieChart(
+                PieChartData(
+                  sections: _generatePieChartSections(categoryAmounts),
+                  sectionsSpace: 2,
+                  centerSpaceRadius: 40,
+                ),
+              ),
+            ),
+            const SizedBox(height: 30),
+            const Text(
+              '이번 달 카테고리별 금액 막대 그래프',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            // 막대 그래프
+            AspectRatio(
+              aspectRatio: 1.5,
+              child: BarChart(
+                BarChartData(
+                  alignment: BarChartAlignment.spaceAround,
+                  barGroups: _generateBarChartData(categoryAmounts),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(showTitles: true),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (double value, TitleMeta meta) {
+                          String category = categoryAmounts.keys.toList()[value.toInt()];
+                          return Text(category);
+                        },
+                      ),
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+
+
+
+############################################################################################################################################
+############################################################################################################################################
+############################################################################################################################################
+############################################################################################################################################
+############################################################################################################################################
+
+
+
+
+Failed to open cache file: '/Users/gimhogyeong/Desktop/flutter/my_flutter_app_001/build/macos/SDKStatCaches.noindex/macosx15.1-24B75-26c8390a7c93c703a57fb2538426748e.sdkstatcache': Permission denied
+Command ClangStatCache failed with a nonzero exit code
+** BUILD FAILED **
+
+
+2024-11-19 17:01:35.120 my_flutter_app_001[17809:54776] TISFileInterrogator updateSystemInputSources false but old data invalid: currentCacheHeaderPtr nonNULL? 0, ->cacheFormatVersion 0, ->magicCookie 00000000, inputSourceTableCountSys 0
+Keyboard Layouts: duplicate keyboard layout identifier -17410.
+Keyboard Layouts: keyboard layout identifier -17410 has been replaced with -28673.
+Keyboard Layouts: duplicate keyboard layout identifier -30769.
+Keyboard Layouts: keyboard layout identifier -30769 has been replaced with -28674.
+Keyboard Layouts: duplicate keyboard layout identifier -14934.
+Keyboard Layouts: keyboard layout identifier -14934 has been replaced with -28675.
+Syncing files to device macOS...                                    81ms
+
+Flutter run key commands.
+r Hot reload. 🔥🔥🔥
+R Hot restart.
+h List all available interactive commands.
+d Detach (terminate "flutter run" but leave application running).
+c Clear the screen
+q Quit (terminate the application on the device).
+
+A Dart VM Service on macOS is available at: http://127.0.0.1:50665/jkMBqQxqAF8=/
+flutter: 오늘은 1일이 아니므로 백업하지 않습니다.
+The Flutter DevTools debugger and profiler on macOS is available at: http://127.0.0.1:9101?uri=http://127.0.0.1:50665/jkMBqQxqAF8=/
+[ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: type 'List<String>' is not a subtype of type 'String' in type cast
+#0      _TodayPageState.loadandcreatecategories (package:my_flutter_app_001/pages/TodayPage.dart:277:43)
+<asynchronous suspension>
+
+flutter: csv 파일이 있음
+2024-11-19 17:01:50.452 my_flutter_app_001[17809:54776] WARNING: Secure coding is automatically enabled for restorable state! However, not on all supported macOS versions of this application. Opt-in to secure coding explicitly by implementing NSApplicationDelegate.applicationSupportsSecureRestorableState:.

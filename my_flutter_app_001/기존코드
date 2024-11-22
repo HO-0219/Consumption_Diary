@@ -1,0 +1,134 @@
+import 'package:flutter/material.dart';
+import 'package:table_calendar/table_calendar.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'package:intl/intl.dart';
+import 'dart:convert';
+import 'package:csv/csv.dart';
+
+class CalendarPage extends StatefulWidget {
+  const CalendarPage({Key? key}) : super(key: key);
+
+  @override
+  _CalendarPageState createState() => _CalendarPageState();
+}
+
+class _CalendarPageState extends State<CalendarPage> {
+  Map<DateTime, List<Map<String, dynamic>>> _events = {};
+  DateTime _focusedDay = DateTime.now();
+  DateTime? _selectedDay;
+  List<Map<String, dynamic>> _selectedEvents = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMonthlyData(_focusedDay);
+  }
+
+  /// 특정 달의 데이터 로드
+  Future<void> _loadMonthlyData(DateTime date) async {
+    int year = date.year;
+    int month = date.month;
+
+    final records = await loadMonthlyCsvData(year, month);
+
+    // 날짜별 이벤트 초기화
+    Map<DateTime, List<Map<String, dynamic>>> events = {};
+
+    // 데이터 그룹화
+    for (var record in records) {
+      DateTime eventDate = record['date'];
+      if (!events.containsKey(eventDate)) {
+        events[eventDate] = [];
+      }
+      events[eventDate]!.add(record);
+    }
+
+    setState(() {
+      _events = events;
+      _selectedEvents = _events[_selectedDay] ?? [];
+    });
+  }
+
+  /// CSV 데이터 로드 (현재 달과 이전 달 구분)
+  Future<List<Map<String, dynamic>>> loadMonthlyCsvData(int year, int month) async {
+    final directory = await getApplicationDocumentsDirectory();
+
+    final isCurrentMonth = (year == DateTime.now().year && month == DateTime.now().month);
+    final fileName = isCurrentMonth
+        ? 'records.csv'
+        : '${year}_${month.toString().padLeft(2, '0')}_records.csv';
+
+    final filePath = '${directory.path}/$fileName';
+    final file = File(filePath);
+
+    if (await file.exists()) {
+      final input = file.openRead();
+      final csvData = await input.transform(utf8.decoder).transform(const CsvToListConverter()).toList();
+
+      List<Map<String, dynamic>> data = [];
+      for (int i = 1; i < csvData.length; i++) {
+        data.add({
+          'date': DateTime.parse(csvData[i][0]),
+          'time': csvData[i][1],
+          'category': csvData[i][2],
+          'amount': int.parse(csvData[i][3].toString()),
+          'description': csvData[i][4],
+        });
+      }
+      return data;
+    } else {
+      debugPrint('$fileName 파일이 존재하지 않습니다.');
+      return [];
+    }
+  }
+
+  /// 날짜 선택 시 이벤트 업데이트
+  void _onDaySelected(DateTime selectedDay, DateTime focusedDay) {
+    setState(() {
+      _selectedDay = selectedDay;
+      _focusedDay = focusedDay;
+      _selectedEvents = _events[selectedDay] ?? [];
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('캘린더 페이지')),
+      body: Column(
+        children: [
+          TableCalendar(
+            locale: 'ko_KR',
+            firstDay: DateTime.utc(2020, 1, 1),
+            lastDay: DateTime.utc(2030, 12, 31),
+            focusedDay: _focusedDay,
+            selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+            onDaySelected: _onDaySelected,
+            calendarFormat: CalendarFormat.month,
+            eventLoader: (day) => _events[day] ?? [],
+            calendarStyle: const CalendarStyle(
+              todayDecoration: BoxDecoration(color: Colors.blue, shape: BoxShape.circle),
+              selectedDecoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+            ),
+          ),
+          const SizedBox(height: 8.0),
+          Expanded(
+            child: _selectedEvents.isEmpty
+                ? const Center(child: Text('해당 일에는 소비 내역이 없습니다'))
+                : ListView.builder(
+                    itemCount: _selectedEvents.length,
+                    itemBuilder: (context, index) {
+                      final event = _selectedEvents[index];
+                      return ListTile(
+                        title: Text('${event['category']} - ₩${event['amount']}'),
+                        subtitle: Text('${event['time']} - ${event['description']}'),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}

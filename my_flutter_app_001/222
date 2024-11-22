@@ -1,0 +1,224 @@
+import 'dart:io';
+import 'dart:convert'; // For working with CSV
+import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart'; // File path management
+
+class CategoryManager extends StatefulWidget {
+  @override
+  _CategoryManagerState createState() => _CategoryManagerState();
+}
+
+class _CategoryManagerState extends State<CategoryManager> {
+  List<String> categories = [];
+  TextEditingController _categoryController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCategories();
+  }
+
+  // 1. 카테고리 CSV 파일 로드 또는 생성
+  Future<File> _getCategoryFile() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final path = '${directory.path}/category.csv';
+    return File(path);
+  }
+
+  Future<void> _loadCategories() async {
+    try {
+      final file = await _getCategoryFile();
+      if (await file.exists()) {
+        final csvContent = await file.readAsString();
+        setState(() {
+          categories = LineSplitter().convert(csvContent);
+        });
+      } else {
+        await _createDefaultCategories(); // 파일이 없으면 생성
+      }
+    } catch (e) {
+      print('Error loading categories: $e');
+    }
+  }
+
+  // 2. 기본 카테고리 추가
+  Future<void> _createDefaultCategories() async {
+    final defaultCategories = ['Work', 'Personal', 'Shopping', 'Fitness'];
+    setState(() {
+      categories = defaultCategories;
+    });
+    await _saveCategories(); // 파일에 저장
+  }
+
+  Future<void> _saveCategories() async {
+    final file = await _getCategoryFile();
+    final csvContent = categories.join('\n');
+    await file.writeAsString(csvContent);
+  }
+
+  // 3. 카테고리 추가 (CSV 파일에 저장하고 목록 업데이트)
+  Future<void> _addCategory(String category) async {
+    setState(() {
+      categories.add(category);
+    });
+    await _saveCategories();
+  }
+
+  // 4. 카테고리 삭제 (선택한 항목만 삭제)
+  Future<void> _deleteCategory(String category) async {
+    setState(() {
+      categories.remove(category);
+    });
+    await _saveCategories();
+  }
+
+  // 5. 카테고리 수정 다이얼로그
+  void _openCategoryEditDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('카테고리 수정'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('카테고리 목록', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              ListView.builder(
+                shrinkWrap: true,
+                itemCount: categories.length,
+                itemBuilder: (context, index) {
+                  return ListTile(
+                    title: Text(categories[index]),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _openAddCategoryDialog,
+                child: const Text('카테고리 추가'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: _openDeleteCategoryDialog,
+              child: const Text('카테고리 삭제'),
+            ),
+            TextButton(
+              child: const Text('닫기'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // 6. 카테고리 추가 다이얼로그
+  void _openAddCategoryDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('카테고리 추가'),
+          content: TextField(
+            controller: _categoryController,
+            decoration: const InputDecoration(hintText: '새 카테고리 입력'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                String newCategory = _categoryController.text.trim();
+                if (newCategory.isNotEmpty) {
+                  _addCategory(newCategory).then((_) {
+                    Navigator.of(context).pop();
+                  });
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('카테고리를 입력하세요.')),
+                  );
+                }
+              },
+              child: const Text('추가'),
+            ),
+            TextButton(
+              child: const Text('닫기'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // 7. 카테고리 삭제 다이얼로그
+  void _openDeleteCategoryDialog() {
+    String? categoryToDelete;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('카테고리 삭제'),
+          content: DropdownButton<String>(
+            hint: const Text('삭제할 카테고리를 선택하세요'),
+            value: categoryToDelete,
+            onChanged: (String? newValue) {
+              setState(() {
+                categoryToDelete = newValue;
+              });
+            },
+            items: categories.map<DropdownMenuItem<String>>((String category) {
+              return DropdownMenuItem<String>(
+                value: category,
+                child: Text(category),
+              );
+            }).toList(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('취소'),
+            ),
+            TextButton(
+              onPressed: () {
+                if (categoryToDelete != null) {
+                  _deleteCategory(categoryToDelete!).then((_) {
+                    Navigator.of(context).pop();
+                  });
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('삭제할 카테고리를 선택하세요.')),
+                  );
+                }
+              },
+              child: const Text('삭제'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('카테고리 관리'),
+      ),
+      body: Center(
+        child: ElevatedButton(
+          onPressed: _openCategoryEditDialog,
+          child: const Text('카테고리 수정'),
+        ),
+      ),
+    );
+  }
+}
